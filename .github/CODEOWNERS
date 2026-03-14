@@ -1,0 +1,18 @@
+# CODEOWNERS — code review ownership by area
+# Replace @DiamondElis (or add team handles) with your team usernames/teams.
+# See: https://docs.github.com/en/repositories/managing-your-repositorys-settings-and-features/customizing-your-repository/about-code-owners
+
+# Schema and graph model (Neo4j, shared schemas)
+/neo4j/                    @DiamondElis
+/neo4j/cypher/             @DiamondElis
+/shared/schemas/           @DiamondElis
+/docs/schemas/             @DiamondElis
+
+# API and backend services (FastAPI, workers, services)
+/apps/api/                 @DiamondElis
+/apps/worker/              @DiamondElis
+/services/                 @DiamondElis
+
+# UI and frontend (Next.js, visualization)
+/apps/web/                 @DiamondElis
+/services/visualization/   @DiamondElis

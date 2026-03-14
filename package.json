@@ -1,0 +1,15 @@
+{
+  "name": "sensemap",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Living GraphRAG — apps and shared tooling",
+  "scripts": {
+    "dev": "npm run dev --workspace=apps/web",
+    "build": "npm run build --workspace=apps/web",
+    "test": "npm run test --workspaces --if-present",
+    "lint": "npm run lint --workspaces --if-present"
+  },
+  "workspaces": [
+    "apps/web"
+  ]
+}

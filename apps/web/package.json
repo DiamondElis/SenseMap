@@ -1,0 +1,11 @@
+{
+  "name": "@sensemap/web",
+  "version": "0.1.0",
+  "private": true,
+  "scripts": {
+    "dev": "echo 'Add Next.js dev script'",
+    "build": "echo 'Add Next.js build'",
+    "test": "echo 'Add tests'",
+    "lint": "echo 'Add lint'"
+  }
+}

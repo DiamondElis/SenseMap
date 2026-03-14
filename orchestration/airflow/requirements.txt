@@ -1,0 +1,4 @@
+# PDF ingestion pipeline (plugins/sensemap). Install in Airflow image or at runtime.
+neo4j>=5.14.0
+openai>=1.0.0
+pypdf>=4.0.0

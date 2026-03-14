@@ -1,0 +1,21 @@
+# Optional: validate semantic version tag format on tag push.
+# Use tag push in your deploy pipeline to build/release when tags match v*.*.*
+name: tag-validate
+
+on:
+  push:
+    tags: ["v*.*.*", "v*.*.*-*"]
+
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check tag format
+        run: |
+          TAG="${GITHUB_REF#refs/tags/}"
+          if [[ "$TAG" =~ ^v[0-9]+\.[0-9]+\.[0-9]+(-.+)?$ ]]; then
+            echo "Valid semantic version tag: $TAG"
+          else
+            echo "::error::Tag must match semantic version (e.g. v1.0.0 or v1.0.0-beta.1)"
+            exit 1
+          fi
