@@ -25,3 +25,22 @@ Or run the statements in **Neo4j Browser** (http://localhost:7474), in order: `c
 | `cypher/indexes.cypher` | Vector index on `Chunk.embedding` (1536 dims, cosine), range index on `Chunk.position`, text index on `Entity.name` |
 
 Vector index uses **cosine** similarity and **1536** dimensions as recommended for text embeddings.
+
+## Hybrid graph (after entity extraction)
+
+Once the entity-relation pipeline has run, the graph also has:
+
+- **(:Entity)** — extracted entities (constraint on `id`, text index on `name`).
+- **(:Chunk)-[:MENTIONS]->(:Entity)** — chunk mentions an entity.
+- **(:Entity)-[:RELATES_TO]->(:Entity)** — relation between entities (optional property `type`).
+
+See `cypher/queries/hybrid_graph.cypher` for examples. Build order: lexical graph first, then entity extraction → relation extraction → resolution → hybrid graph.
+
+## GDS enrichment (after hybrid graph is stable)
+
+Do not run on a weak graph. When entities and relationships are in place, run Graph Data Science algorithms:
+
+- **Cypher scripts**: `cypher/gds/project_kg.cypher` then `pagerank.cypher`, `leiden.cypher`, `fastrp.cypher`, `node_similarity.cypher` (optional).
+- **Airflow**: DAG **gds_enrichment** runs project → PageRank → Leiden → FastRP → Node Similarity.
+
+Writes: `pagerank`, `communityId`, `graphEmbedding` (128 dims), and optional `(:X)-[:SIMILAR { score }]->(:Y)` for related-entity suggestions. See `docs/runbooks/gds-enrichment.md`.

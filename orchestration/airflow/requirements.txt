@@ -1,4 +1,6 @@
-# PDF ingestion pipeline (plugins/sensemap). Install in Airflow image or at runtime.
+# PDF ingestion + entity/relation extraction (plugins/sensemap). Install in Airflow image.
 neo4j>=5.14.0
 openai>=1.0.0
 pypdf>=4.0.0
+spacy>=3.7.0
+rapidfuzz>=3.0.0
