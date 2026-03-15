@@ -14,6 +14,8 @@ type GraphSceneProps = {
   filterLabels: Set<string>;
   colorBy: "label" | "community";
   queryTraceNodeIds?: Set<string>;
+  graphMode?: "lexical" | "hybrid" | "entity-only";
+  showMentions?: boolean;
 };
 
 export function GraphScene(props: GraphSceneProps) {

@@ -8,10 +8,31 @@ import type { GraphData } from "@/app/page";
 
 const LABEL_COLORS: Record<string, string> = {
   Entity: "#3b82f6",
+  EntityMention: "#06b6d4",
   Chunk: "#22c55e",
   Document: "#f59e0b",
+  ParentChunk: "#a855f7",
+  IngestionRun: "#64748b",
   Node: "#94a3b8",
 };
+
+const SEMANTIC_EDGE_TYPES = new Set(["RELATES_TO", "REFERS_TO", "MENTIONS", "HAS_ENTITY"]);
+const LEXICAL_EDGE_TYPES = new Set(["HAS_PARENT", "HAS_CHILD", "NEXT_CHUNK", "INGESTED_IN"]);
+const LEXICAL_LABELS = new Set(["Document", "ParentChunk", "Chunk", "IngestionRun"]);
+const ENTITY_LABELS = new Set(["Entity", "EntityMention"]);
+
+const ENTITY_TYPE_COLORS: Record<string, string> = {
+  Person: "#3b82f6",
+  Organization: "#8b5cf6",
+  Concept: "#06b6d4",
+  Technology: "#10b981",
+  Method: "#f59e0b",
+  Material: "#ef4444",
+  Place: "#ec4899",
+  Event: "#6366f1",
+  DocumentTopic: "#14b8a6",
+};
+const DEFAULT_ENTITY_TYPE_COLOR = "#64748b";
 
 function hash(str: string): number {
   let h = 0;
@@ -21,6 +42,9 @@ function hash(str: string): number {
 
 function nodeColor(node: GraphData["nodes"][0], colorBy: "label" | "community"): string {
   if (colorBy === "label") {
+    if (node.label === "Entity" && node.type) {
+      return ENTITY_TYPE_COLORS[node.type] ?? DEFAULT_ENTITY_TYPE_COLOR;
+    }
     return LABEL_COLORS[node.label || "Node"] ?? "#94a3b8";
   }
   const cid = node.communityId != null ? String(node.communityId) : "none";
@@ -54,21 +78,42 @@ type SceneContentProps = {
   filterLabels: Set<string>;
   colorBy: "label" | "community";
   queryTraceNodeIds?: Set<string>;
+  graphMode: "lexical" | "hybrid" | "entity-only";
+  showMentions: boolean;
   onHover: (node: GraphData["nodes"][0] | null) => void;
 };
 
-function SceneContent({ graphData, filterLabels, colorBy, queryTraceNodeIds, onHover }: SceneContentProps) {
+function SceneContent({ graphData, filterLabels, colorBy, queryTraceNodeIds, graphMode, showMentions, onHover }: SceneContentProps) {
+  const { visibleNodes, visibleEdges } = useMemo(() => {
+    if (!graphData) return { visibleNodes: [] as GraphData["nodes"], visibleEdges: [] as GraphData["edges"] };
+    let nodes = graphData.nodes.filter((n) => !filterLabels.has(n.label || "Node"));
+    let edges = graphData.edges;
+
+    if (!showMentions) {
+      const mentionIds = new Set(nodes.filter((n) => n.label === "EntityMention").map((n) => n.id));
+      nodes = nodes.filter((n) => n.label !== "EntityMention");
+      edges = edges.filter((e) => !mentionIds.has(e.source) && !mentionIds.has(e.target));
+    }
+
+    if (graphMode === "lexical") {
+      nodes = nodes.filter((n) => LEXICAL_LABELS.has(n.label || ""));
+      edges = edges.filter((e) => LEXICAL_EDGE_TYPES.has(e.type || ""));
+    } else if (graphMode === "entity-only") {
+      nodes = nodes.filter((n) => ENTITY_LABELS.has(n.label || ""));
+      edges = edges.filter((e) => SEMANTIC_EDGE_TYPES.has(e.type || ""));
+    }
+
+    const nodeIds = new Set(nodes.map((n) => n.id));
+    edges = edges.filter((e) => nodeIds.has(e.source) && nodeIds.has(e.target));
+    return { visibleNodes: nodes, visibleEdges: edges };
+  }, [graphData, filterLabels, graphMode, showMentions]);
+
   const positions = useMemo(() => {
-    if (!graphData?.nodes.length) return new Map<string, [number, number, number]>();
-    return layoutNodes(graphData.nodes, graphData.edges);
-  }, [graphData]);
+    if (!visibleNodes.length) return new Map<string, [number, number, number]>();
+    return layoutNodes(visibleNodes, visibleEdges);
+  }, [visibleNodes, visibleEdges]);
 
-  const visibleNodes = useMemo(() => {
-    if (!graphData) return [];
-    return graphData.nodes.filter((n) => !filterLabels.has(n.label || "Node"));
-  }, [graphData, filterLabels]);
-
-  if (!graphData || visibleNodes.length === 0) {
+  if (visibleNodes.length === 0) {
     return (
       <mesh>
         <sphereGeometry args={[0.5, 16, 16]} />
@@ -102,13 +147,15 @@ function SceneContent({ graphData, filterLabels, colorBy, queryTraceNodeIds, onH
           </group>
         );
       })}
-      {graphData.edges
+      {visibleEdges
         .filter((e) => positions.has(e.source) && positions.has(e.target))
         .map((edge, i) => {
           const a = positions.get(edge.source)!;
           const b = positions.get(edge.target)!;
+          const isSemantic = SEMANTIC_EDGE_TYPES.has(edge.type || "");
+          const color = isSemantic ? "#06b6d4" : "#444";
           return (
-            <Line key={`${edge.source}-${edge.target}-${i}`} points={[a, b]} color="#444" />
+            <Line key={`${edge.source}-${edge.target}-${i}`} points={[a, b]} color={color} />
           );
         })}
     </>
@@ -120,9 +167,11 @@ type GraphSceneInnerProps = {
   filterLabels: Set<string>;
   colorBy: "label" | "community";
   queryTraceNodeIds?: Set<string>;
+  graphMode?: "lexical" | "hybrid" | "entity-only";
+  showMentions?: boolean;
 };
 
-export function GraphSceneInner({ graphData, filterLabels, colorBy, queryTraceNodeIds }: GraphSceneInnerProps) {
+export function GraphSceneInner({ graphData, filterLabels, colorBy, queryTraceNodeIds, graphMode = "hybrid", showMentions = true }: GraphSceneInnerProps) {
   const [hovered, setHovered] = useState<GraphData["nodes"][0] | null>(null);
 
   return (
@@ -163,6 +212,8 @@ export function GraphSceneInner({ graphData, filterLabels, colorBy, queryTraceNo
           filterLabels={filterLabels}
           colorBy={colorBy}
           queryTraceNodeIds={queryTraceNodeIds}
+          graphMode={graphMode}
+          showMentions={showMentions}
           onHover={setHovered}
         />
         <OrbitControls enableDamping dampingFactor={0.05} minDistance={5} maxDistance={80} />

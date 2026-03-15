@@ -20,6 +20,12 @@ from graph_serving import (
     get_query_trace_ids,
     store_query_trace,
     generate_query_id,
+    list_lexical_documents,
+    get_lexical_document,
+    get_lexical_preview,
+    get_graph_entities,
+    get_entity_neighborhood,
+    get_hybrid_document,
 )
 
 app = FastAPI(title="SenseMap API", version="0.1.0")
@@ -104,6 +110,27 @@ def answer(body: AnswerRequest) -> dict[str, Any]:
     }
 
 
+@app.get("/graph/documents")
+def graph_documents() -> list[dict[str, Any]]:
+    """List Document nodes (id, title, source_type) for loading a lexical graph."""
+    return list_lexical_documents()
+
+
+@app.get("/graph/document/{document_id}")
+def graph_document(document_id: str) -> dict[str, Any]:
+    """
+    Return full lexical graph for one document: Document, ParentChunk, Chunk, IngestionRun
+    and edges HAS_PARENT, HAS_CHILD, NEXT_CHUNK, INGESTED_IN.
+    """
+    return get_lexical_document(document_id)
+
+
+@app.get("/graph/lexical-preview")
+def graph_lexical_preview(document_id: str = Query(..., alias="document_id")) -> dict[str, Any]:
+    """Return lexical graph for one document (same as GET /graph/document/{document_id})."""
+    return get_lexical_preview(document_id)
+
+
 @app.get("/graph/subgraph")
 def graph_subgraph(chunk_ids: str, expand_depth: int = 1) -> dict[str, Any]:
     """
@@ -115,6 +142,27 @@ def graph_subgraph(chunk_ids: str, expand_depth: int = 1) -> dict[str, Any]:
     if not ids:
         return {"nodes": [], "edges": []}
     return get_subgraph(ids, expand_depth=expand_depth)
+
+
+@app.get("/graph/entities")
+def graph_entities(chunk_id: str = Query(..., alias="chunk_id")) -> dict[str, Any]:
+    """Return Chunk, EntityMention, Entity and edges MENTIONS, REFERS_TO, HAS_ENTITY for one chunk. Query param: chunk_id."""
+    return get_graph_entities(chunk_id)
+
+
+@app.get("/graph/entity-neighborhood")
+def graph_entity_neighborhood(
+    entity_id: str = Query(..., alias="id"),
+    hops: int = Query(2, ge=0, le=5),
+) -> dict[str, Any]:
+    """Expand from an entity (or any node) by N hops. Query params: id, hops (default 2)."""
+    return get_entity_neighborhood(entity_id, hops=hops)
+
+
+@app.get("/graph/hybrid-document")
+def graph_hybrid_document(document_id: str = Query(..., alias="document_id")) -> dict[str, Any]:
+    """Return combined lexical + entity graph for one document (chunk→mention→entity paths and RELATES_TO). Query param: document_id."""
+    return get_hybrid_document(document_id)
 
 
 @app.get("/graph/neighborhood")

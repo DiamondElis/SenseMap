@@ -1,0 +1,24 @@
+# Entity glossary: canonical names, preferred types, aliases, descriptions.
+# Used by extraction and resolution to normalize entities and enforce allowed types.
+# Types must match services/extraction/entities/schema.py ENTITY_TYPES.
+
+entities:
+  - canonical_name: "Neo4j"
+    type: "Technology"
+    aliases: ["Neo4j DB", "Neo4j database"]
+    description: "Graph database platform"
+
+  - canonical_name: "GraphRAG"
+    type: "Concept"
+    aliases: ["graph rag", "graph-based rag"]
+    description: "Graph-enhanced retrieval augmented generation"
+
+  - canonical_name: "Microsoft"
+    type: "Organization"
+    aliases: ["MS", "MSFT"]
+    description: "Technology corporation"
+
+  - canonical_name: "Retrieval Augmented Generation"
+    type: "Concept"
+    aliases: ["RAG", "retrieval-augmented generation"]
+    description: "Pattern combining retrieval with generative models"

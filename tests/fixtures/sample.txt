@@ -1,0 +1,7 @@
+SenseMap Sample Document
+
+This is the first paragraph. It contains a few sentences. We use it for ingestion tests.
+
+The second paragraph has more content. Parent and child chunking should split this into ordered chunks. Embeddings and Neo4j can be mocked in integration tests.
+
+Final paragraph. Short and simple.
