@@ -41,6 +41,108 @@ GDS_STEPS = [
 ]
 
 
+def _driver(uri: str = NEO4J_URI, user: str = NEO4J_USER, password: str = NEO4J_PASSWORD):
+    return GraphDatabase.driver(uri, auth=(user, password))
+
+
+def project_graph(
+    uri: str = NEO4J_URI,
+    user: str = NEO4J_USER,
+    password: str = NEO4J_PASSWORD,
+) -> dict[str, Any]:
+    """Drop existing 'kg' if present and project graph to GDS. Returns project result."""
+    driver = _driver(uri, user, password)
+    with driver.session() as session:
+        for name, query in GDS_STEPS[:2]:
+            try:
+                r = session.run(query)
+                rec = r.single()
+                if name == "Project kg":
+                    driver.close()
+                    return dict(rec) if rec else {}
+            except Exception as e:
+                err = str(e).lower()
+                if name == "Drop existing graph" and ("not find" in err or "does not exist" in err or "unknown" in err):
+                    continue
+                driver.close()
+                raise
+    driver.close()
+    return {}
+
+
+def run_pagerank(
+    uri: str = NEO4J_URI,
+    user: str = NEO4J_USER,
+    password: str = NEO4J_PASSWORD,
+) -> dict[str, Any]:
+    """Run PageRank and write scores to node property 'pagerank'."""
+    driver = _driver(uri, user, password)
+    with driver.session() as session:
+        r = session.run(GDS_STEPS[2][1])
+        rec = r.single()
+        driver.close()
+        return dict(rec) if rec else {}
+
+
+def run_leiden(
+    uri: str = NEO4J_URI,
+    user: str = NEO4J_USER,
+    password: str = NEO4J_PASSWORD,
+) -> dict[str, Any]:
+    """Run Leiden and write communityId to nodes."""
+    driver = _driver(uri, user, password)
+    with driver.session() as session:
+        r = session.run(GDS_STEPS[3][1])
+        rec = r.single()
+        driver.close()
+        return dict(rec) if rec else {}
+
+
+def run_fastrp(
+    uri: str = NEO4J_URI,
+    user: str = NEO4J_USER,
+    password: str = NEO4J_PASSWORD,
+) -> dict[str, Any]:
+    """Run FastRP and write graphEmbedding to nodes."""
+    driver = _driver(uri, user, password)
+    with driver.session() as session:
+        r = session.run(GDS_STEPS[4][1])
+        rec = r.single()
+        driver.close()
+        return dict(rec) if rec else {}
+
+
+def write_back_node_similarity(
+    uri: str = NEO4J_URI,
+    user: str = NEO4J_USER,
+    password: str = NEO4J_PASSWORD,
+) -> dict[str, Any]:
+    """Optional: write Node Similarity SIMILAR edges and score. Skip if not needed."""
+    driver = _driver(uri, user, password)
+    with driver.session() as session:
+        r = session.run(GDS_STEPS[5][1])
+        rec = r.single()
+        driver.close()
+        return dict(rec) if rec else {}
+
+
+def validate_enrichment(
+    uri: str = NEO4J_URI,
+    user: str = NEO4J_USER,
+    password: str = NEO4J_PASSWORD,
+) -> dict[str, Any]:
+    """Check that enrichment properties exist on at least one node (pagerank, communityId, graphEmbedding)."""
+    driver = _driver(uri, user, password)
+    with driver.session() as session:
+        r = session.run(
+            "MATCH (n) WHERE n.pagerank IS NOT NULL OR n.communityId IS NOT NULL OR n.graphEmbedding IS NOT NULL "
+            "RETURN count(n) AS enrichedCount LIMIT 1"
+        )
+        rec = r.single()
+        driver.close()
+        return {"enrichedCount": rec["enrichedCount"] if rec else 0}
+
+
 def run_gds_enrichment(
     uri: str = NEO4J_URI,
     user: str = NEO4J_USER,
@@ -51,7 +153,7 @@ def run_gds_enrichment(
     Run GDS steps in order. Returns list of step names and result summaries.
     skip_node_similarity: set True to run only PageRank, Leiden, FastRP.
     """
-    driver = GraphDatabase.driver(uri, auth=(user, password))
+    driver = _driver(uri, user, password)
     results: list[dict[str, Any]] = []
     steps = [s for s in GDS_STEPS if s[0] != "Node Similarity" or not skip_node_similarity]
     with driver.session() as session:

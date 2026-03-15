@@ -13,12 +13,24 @@ def load_chunks_for_extraction(
     user: str = NEO4J_USER,
     password: str = NEO4J_PASSWORD,
     limit: int = 0,
+    only_unprocessed: bool = True,
 ) -> list[tuple[str, str]]:
-    """Return list of (chunk_id, text) for chunks that have text. limit=0 means no limit."""
+    """
+    Return list of (chunk_id, text) for chunks that have text.
+    limit=0 means no limit.
+    only_unprocessed: if True, return only chunks that have no (Chunk)-[:MENTIONS]->(Entity) yet (idempotent reruns).
+    """
     driver = _driver(uri, user, password)
     out: list[tuple[str, str]] = []
     with driver.session() as session:
-        q = "MATCH (c:Chunk) WHERE c.text IS NOT NULL AND size(c.text) > 0 RETURN c.id AS id, c.text AS text"
+        if only_unprocessed:
+            q = (
+                "MATCH (c:Chunk) WHERE c.text IS NOT NULL AND size(c.text) > 0 "
+                "AND NOT (c)-[:MENTIONS]->(:Entity) "
+                "RETURN c.id AS id, c.text AS text"
+            )
+        else:
+            q = "MATCH (c:Chunk) WHERE c.text IS NOT NULL AND size(c.text) > 0 RETURN c.id AS id, c.text AS text"
         if limit > 0:
             q += f" LIMIT {limit}"
         r = session.run(q)

@@ -140,3 +140,47 @@ def ingestion_run_properties(run: IngestionRun) -> dict[str, Any]:
         "version": run.version,
         "input_path": run.input_path,
     }
+
+
+def _datetime_iso(dt: Optional[datetime]) -> Optional[str]:
+    if dt is None:
+        return None
+    return dt.isoformat() if dt.tzinfo else dt.replace(tzinfo=timezone.utc).isoformat()
+
+
+def pipeline_run_properties(run: Any) -> dict[str, Any]:
+    """
+    Normalized property dict for a PipelineRun node. Use for SET in Cypher.
+    Accepts PipelineRunRecord or dict with id, dag_id, run_id, status, started_at, finished_at, metadata.
+    """
+    from shared.python.models.pipeline_runs import PipelineRunRecord
+    if isinstance(run, dict):
+        run = PipelineRunRecord(**run)
+    return {
+        "id": run.id,
+        "dag_id": run.dag_id,
+        "run_id": run.run_id,
+        "status": run.status,
+        "started_at": _datetime_iso(run.started_at),
+        "finished_at": _datetime_iso(run.finished_at),
+        "metadata": getattr(run, "metadata", {}) or {},
+    }
+
+
+def task_run_properties(task: Any) -> dict[str, Any]:
+    """
+    Normalized property dict for a TaskRun node. Use for SET in Cypher.
+    Accepts TaskRunRecord or dict with id, pipeline_run_id, task_id, status, started_at, finished_at, metadata.
+    """
+    from shared.python.models.pipeline_runs import TaskRunRecord
+    if isinstance(task, dict):
+        task = TaskRunRecord(**task)
+    return {
+        "id": task.id,
+        "pipeline_run_id": task.pipeline_run_id,
+        "task_id": task.task_id,
+        "status": task.status,
+        "started_at": _datetime_iso(task.started_at),
+        "finished_at": _datetime_iso(task.finished_at),
+        "metadata": getattr(task, "metadata", {}) or {},
+    }

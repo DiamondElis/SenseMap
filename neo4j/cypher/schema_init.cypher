@@ -38,6 +38,21 @@ FOR (c:Claim) REQUIRE c.id IS UNIQUE;
 CREATE CONSTRAINT community_id IF NOT EXISTS
 FOR (c:Community) REQUIRE c.id IS UNIQUE;
 
+CREATE CONSTRAINT conversation_id IF NOT EXISTS
+FOR (c:Conversation) REQUIRE c.id IS UNIQUE;
+
+CREATE CONSTRAINT message_id IF NOT EXISTS
+FOR (m:Message) REQUIRE m.id IS UNIQUE;
+
+CREATE CONSTRAINT candidate_claim_id IF NOT EXISTS
+FOR (cc:CandidateClaim) REQUIRE cc.id IS UNIQUE;
+
+CREATE CONSTRAINT candidate_relation_id IF NOT EXISTS
+FOR (cr:CandidateRelation) REQUIRE cr.id IS UNIQUE;
+
+CREATE CONSTRAINT validation_task_id IF NOT EXISTS
+FOR (v:ValidationTask) REQUIRE v.id IS UNIQUE;
+
 // ----- 2. Indexes (vector + range for retrieval and filtering) -----
 
 CREATE VECTOR INDEX chunk_embedding IF NOT EXISTS
@@ -67,3 +82,9 @@ FOR (e:Entity) ON (e.type);
 
 CREATE FULLTEXT INDEX entity_names_description IF NOT EXISTS
 FOR (e:Entity) ON EACH [e.canonical_name, e.description];
+
+CREATE RANGE INDEX validation_task_status IF NOT EXISTS
+FOR (v:ValidationTask) ON (v.status);
+
+CREATE RANGE INDEX message_position IF NOT EXISTS
+FOR (m:Message) ON (m.position);

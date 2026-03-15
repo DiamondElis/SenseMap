@@ -28,3 +28,10 @@ FOR (e:Entity) ON (e.type);
 
 CREATE FULLTEXT INDEX entity_names_description IF NOT EXISTS
 FOR (e:Entity) ON EACH [e.canonical_name, e.description];
+
+// Conversation memory: validation status and message order
+CREATE RANGE INDEX validation_task_status IF NOT EXISTS
+FOR (v:ValidationTask) ON (v.status);
+
+CREATE RANGE INDEX message_position IF NOT EXISTS
+FOR (m:Message) ON (m.position);

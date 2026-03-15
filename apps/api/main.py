@@ -1,5 +1,6 @@
 """
 SenseMap retrieval API: basic vector, parent-child, NEXT_CHUNK expansion, answer, subgraph.
+Step 4: POST /answer wires the GraphRAG answer pipeline (analyze → route → retrieve → dedupe → rerank → budget → assemble → LLM).
 """
 from typing import Any
 
@@ -31,6 +32,133 @@ from graph_serving import (
 app = FastAPI(title="SenseMap API", version="0.1.0")
 
 
+# ---- Step 4 answer pipeline response shaping ----
+
+def _route_to_external_name(route: str) -> str:
+    """Map internal route choice to stable external name for graph viewer and tooling."""
+    return {
+        "vector_only": "vector_only",
+        "parent_child": "parent_child",
+        "parent_child_expand": "parent_child_plus_graph_expand",
+        "community": "community",
+    }.get(route, route)
+
+
+def _build_answer_response(pipeline_result: dict[str, Any], include_debug: bool) -> dict[str, Any]:
+    """Shape pipeline output into the external deliverable: provenance (documents, parent_chunks, chunks, entities, relationships), graph_trace, debug."""
+    ctx = pipeline_result.get("debug", {}).get("context_object") or {}
+    sections = ctx.get("sections", {})
+    citation_map = ctx.get("citation_map", {})
+
+    chunk_entries = (sections.get("[Chunk Context]", {}) or {}).get("entries", [])
+    entity_entries = (sections.get("[Entity Context]", {}) or {}).get("entries", [])
+    rel_entries = (sections.get("[Relationship Context]", {}) or {}).get("entries", [])
+
+    # Provenance: documents (unique by document_id / document_title)
+    doc_set = set()
+    documents = []
+    for e in chunk_entries:
+        doc_id = e.get("document_title") or e.get("parent_chunk_id") or e.get("node_id")
+        key = (doc_id, e.get("document_title"))
+        if key not in doc_set:
+            doc_set.add(key)
+            documents.append({"document_id": doc_id, "document_title": e.get("document_title") or str(doc_id)})
+
+    # parent_chunks
+    parent_set = set()
+    parent_chunks = []
+    for e in chunk_entries:
+        pid = e.get("parent_chunk_id") or e.get("node_id")
+        if pid not in parent_set:
+            parent_set.add(pid)
+            parent_chunks.append({
+                "parent_chunk_id": pid,
+                "document_id": e.get("document_title") or e.get("document_id"),
+            })
+
+    # chunks
+    chunks = [
+        {
+            "chunk_id": e.get("chunk_id") or e.get("node_id"),
+            "node_id": e.get("node_id"),
+            "text_preview": (e.get("text") or "")[:300],
+            "score": e.get("score"),
+            "document_title": e.get("document_title"),
+            "parent_chunk_id": e.get("parent_chunk_id"),
+        }
+        for e in chunk_entries
+    ]
+
+    # entities
+    entities = [
+        {
+            "entity_id": e.get("entity_id"),
+            "canonical_name": e.get("canonical_name"),
+            "entity_type": e.get("entity_type"),
+            "score": e.get("score"),
+        }
+        for e in entity_entries
+    ]
+
+    # relationships
+    relationships = [
+        {
+            "source_id": e.get("source_id"),
+            "target_id": e.get("target_id"),
+            "source_name": e.get("source_name"),
+            "target_name": e.get("target_name"),
+            "rel_type": e.get("rel_type"),
+            "score": e.get("score"),
+            "source_chunk_ids": e.get("source_chunk_ids", []),
+        }
+        for e in rel_entries
+    ]
+
+    # graph_trace: nodes and edges for UI highlighting
+    nodes = []
+    for e in chunk_entries:
+        nodes.append({
+            "id": e.get("node_id") or e.get("chunk_id"),
+            "label": e.get("node_label", "Chunk"),
+            "text": (e.get("text") or "")[:500],
+            "type": e.get("node_label", "Chunk"),
+        })
+    for e in entity_entries:
+        nodes.append({
+            "id": e.get("entity_id"),
+            "label": "Entity",
+            "text": e.get("canonical_name") or "",
+            "type": e.get("entity_type") or "",
+        })
+    edges = []
+    for e in rel_entries:
+        src = e.get("source_id") or e.get("source_name")
+        tgt = e.get("target_id") or e.get("target_name")
+        if src and tgt:
+            edges.append({"source": str(src), "target": str(tgt), "type": e.get("rel_type", "RELATES_TO")})
+
+    provenance = {
+        "documents": documents,
+        "parent_chunks": parent_chunks,
+        "chunks": chunks,
+        "entities": entities,
+        "relationships": relationships,
+    }
+
+    response = {
+        "answer": pipeline_result.get("answer", ""),
+        "provenance": provenance,
+        "graph_trace": {"nodes": nodes, "edges": edges},
+    }
+    if include_debug:
+        response["debug"] = {
+            "route": _route_to_external_name(pipeline_result.get("provenance", {}).get("route", "")),
+            "token_budget": pipeline_result.get("debug", {}).get("token_budget"),
+            "analysis": pipeline_result.get("debug", {}).get("analysis"),
+        }
+    return response
+
+
 class RetrieveRequest(BaseModel):
     query: str = Field(..., min_length=1)
     top_k: int = Field(5, ge=1, le=50)
@@ -40,6 +168,13 @@ class AnswerRequest(BaseModel):
     query: str = Field(..., min_length=1)
     top_k: int = Field(5, ge=1, le=50)
     use_parent_child: bool = True
+
+
+class AnswerRequestV2(BaseModel):
+    """Step 4 answer: question + optional budget and debug."""
+    question: str = Field(..., min_length=1, description="User question")
+    max_context_tokens: int = Field(3500, ge=100, le=16000, description="Max context tokens for budgeting")
+    debug: bool = Field(True, description="Include debug (route, token_budget) in response")
 
 
 class ExpandRequest(BaseModel):
@@ -70,44 +205,20 @@ def retrieve_parent_child(body: RetrieveRequest) -> list[dict[str, Any]]:
 
 
 @app.post("/answer")
-def answer(body: AnswerRequest) -> dict[str, Any]:
+def answer(body: AnswerRequestV2) -> dict[str, Any]:
     """
-    Retrieve context (parent-child by default), then produce an answer.
-    Without OPENAI_API_KEY returns a placeholder answer with retrieved context.
+    Step 4 answer pipeline: analyze question → route → retrieve → dedupe → rerank → budget → assemble → LLM.
+    Returns answer, provenance (documents, parent_chunks, chunks, entities, relationships), graph_trace (nodes, edges), and optional debug.
     """
-    embedding = embed_query(body.query, model=EMBEDDING_MODEL, api_key=OPENAI_API_KEY)
-    if body.use_parent_child:
-        chunks = parent_child_retrieve(embedding, top_k=body.top_k)
-    else:
-        chunks = basic_vector_retrieve(embedding, top_k=body.top_k)
-    context = "\n\n".join(c["text"] for c in chunks if c.get("text"))
-    if not context:
-        return {"answer": "No relevant context found.", "sources": [], "context_used": False}
-    if OPENAI_API_KEY:
-        try:
-            from openai import OpenAI
-            client = OpenAI(api_key=OPENAI_API_KEY)
-            resp = client.chat.completions.create(
-                model="gpt-4o-mini",
-                messages=[
-                    {"role": "system", "content": "Answer using only the provided context. If the context does not contain the answer, say so."},
-                    {"role": "user", "content": f"Context:\n{context}\n\nQuestion: {body.query}"},
-                ],
-                max_tokens=500,
-            )
-            answer_text = resp.choices[0].message.content or ""
-        except Exception as e:
-            raise HTTPException(status_code=502, detail=f"LLM call failed: {e}")
-    else:
-        answer_text = f"[Placeholder] Answer for: “{body.query}”. Use POST /retrieve/parent-child for context; set OPENAI_API_KEY for real answers."
-    query_id = generate_query_id()
-    store_query_trace(query_id, [c["id"] for c in chunks])
-    return {
-        "answer": answer_text,
-        "query_id": query_id,
-        "sources": [{"id": c["id"], "score": c.get("score"), "text_preview": (c.get("text") or "")[:200]} for c in chunks],
-        "context_used": True,
-    }
+    try:
+        from services.graphrag.context_builders import BudgetConfig
+        from services.graphrag.orchestration.answer_pipeline import run_answer_pipeline
+    except ImportError as e:
+        raise HTTPException(status_code=501, detail=f"Answer pipeline not available: {e}")
+
+    budget_config = BudgetConfig(max_total_tokens=body.max_context_tokens)
+    result = run_answer_pipeline(body.question, budget_config=budget_config)
+    return _build_answer_response(result, include_debug=body.debug)
 
 
 @app.get("/graph/documents")

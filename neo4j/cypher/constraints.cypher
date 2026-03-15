@@ -24,3 +24,19 @@ FOR (c:Claim) REQUIRE c.id IS UNIQUE;
 
 CREATE CONSTRAINT community_id IF NOT EXISTS
 FOR (c:Community) REQUIRE c.id IS UNIQUE;
+
+// Conversation memory (Step 5): candidate layer and validation
+CREATE CONSTRAINT conversation_id IF NOT EXISTS
+FOR (c:Conversation) REQUIRE c.id IS UNIQUE;
+
+CREATE CONSTRAINT message_id IF NOT EXISTS
+FOR (m:Message) REQUIRE m.id IS UNIQUE;
+
+CREATE CONSTRAINT candidate_claim_id IF NOT EXISTS
+FOR (cc:CandidateClaim) REQUIRE cc.id IS UNIQUE;
+
+CREATE CONSTRAINT candidate_relation_id IF NOT EXISTS
+FOR (cr:CandidateRelation) REQUIRE cr.id IS UNIQUE;
+
+CREATE CONSTRAINT validation_task_id IF NOT EXISTS
+FOR (v:ValidationTask) REQUIRE v.id IS UNIQUE;
